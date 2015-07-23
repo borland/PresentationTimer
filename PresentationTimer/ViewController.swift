@@ -8,18 +8,62 @@
 
 import UIKit
 
-class ViewController: UIViewController {
+struct PresentationSection {
+    var name:String
+    var offset:NSTimeInterval
+}
+
+class ViewController: UIViewController, UITableViewDelegate, UITableViewDataSource {
+    
+    @IBOutlet weak var timeLabel: UILabel!
+    @IBOutlet weak var sectionsTableView: UITableView!
+    @IBOutlet var addRowButton: ButtonWithBorder!
+    @IBOutlet var tableViewToAddRowButton: NSLayoutConstraint!
+    @IBOutlet weak var configureButton: ButtonWithBorder!
+    
+    private var sections:[PresentationSection] = []
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        // Do any additional setup after loading the view, typically from a nib.
+
+//        sectionsTableView.backgroundColor = UIColor.clearColor()
+
+//        addRowButton.hidden = true
+//        NSLayoutConstraint.deactivateConstraints([tableViewToAddRowButton])
+    }
+    
+    override func preferredStatusBarStyle() -> UIStatusBarStyle {
+        return UIStatusBarStyle.LightContent
+    }
+    
+    func tableView(tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
+        return sections.count
+    }
+    
+    func tableView(tableView: UITableView, cellForRowAtIndexPath indexPath: NSIndexPath) -> UITableViewCell {
+        guard let cell = tableView.dequeueReusableCellWithIdentifier("timingCell") else {
+            fatalError("bad cell reuse identifier")
+        }
+        
+        return cell
     }
 
-    override func didReceiveMemoryWarning() {
-        super.didReceiveMemoryWarning()
-        // Dispose of any resources that can be recreated.
+    @IBAction func addRowButtonWasClicked(sender: ButtonWithBorder) {
+        addRowButton.hidden = false
+        NSLayoutConstraint.activateConstraints([tableViewToAddRowButton])
     }
-
-
+    
+    @IBAction func configureButtonWasClicked(sender: ButtonWithBorder) {
+        if sectionsTableView.editing {
+            sectionsTableView.editing = false
+            configureButton.setTitle("Configure", forState: .Normal)
+        } else {
+            sectionsTableView.editing = true
+            configureButton.setTitle("Done", forState: .Normal)
+        }
+    }
+    
+    @IBAction func resetButtonWasClicked(sender: ButtonWithBorder) {
+    }
 }
 
