@@ -35,7 +35,7 @@
                                         <color key="sectionIndexBackgroundColor" white="0.0" alpha="0.0" colorSpace="calibratedWhite"/>
                                         <color key="sectionIndexTrackingBackgroundColor" white="0.0" alpha="0.0" colorSpace="calibratedWhite"/>
                                         <prototypes>
-                                            <tableViewCell clipsSubviews="YES" contentMode="scaleToFill" selectionStyle="none" hidesAccessoryWhenEditing="NO" indentationLevel="1" indentationWidth="0.0" reuseIdentifier="timingCell" id="ybW-Ov-oZD">
+                                            <tableViewCell clipsSubviews="YES" contentMode="scaleToFill" selectionStyle="none" showsReorderControl="YES" hidesAccessoryWhenEditing="NO" indentationLevel="1" indentationWidth="0.0" reuseIdentifier="timingCell" id="ybW-Ov-oZD">
                                                 <rect key="frame" x="0.0" y="22" width="343" height="44"/>
                                                 <autoresizingMask key="autoresizingMask"/>
                                                 <tableViewCellContentView key="contentView" opaque="NO" clipsSubviews="YES" multipleTouchEnabled="YES" contentMode="center" tableViewCell="ybW-Ov-oZD" id="D4q-ZI-0CW">
@@ -94,7 +94,6 @@
                                         <state key="normal" title="Add Row"/>
                                         <connections>
                                             <action selector="addRowButtonWasClicked:" destination="BYZ-38-t0r" eventType="touchUpInside" id="BOK-Hq-uEy"/>
-                                            <action selector="configureButtonWasClicked:" destination="BYZ-38-t0r" eventType="touchUpInside" id="Rnj-Sn-6No"/>
                                         </connections>
                                     </button>
                                     <stackView opaque="NO" contentMode="scaleToFill" fixedFrame="YES" spacing="5" translatesAutoresizingMaskIntoConstraints="NO" id="pa5-yP-xaq">
