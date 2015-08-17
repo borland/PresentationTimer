@@ -11,7 +11,86 @@ import Foundation
 
 struct PresentationSection {
     var name:String
-    var duration:NSTimeInterval
+    var startAtInterval:NSTimeInterval
+}
+
+enum TimelineMode {
+    case Paused, Running
+}
+
+class Timeline {
+    private var _baseline:NSTimeInterval = NSTimeInterval(0)
+    private var _timerStartedAtDate:NSDate?
+    private var _timer:NSTimer?
+    
+    private let _changedCallback:()->()
+    private let _pausedCallback:()->()
+    private let _resumedCallback:()->()
+    
+    init(changedCallback:()->(), pausedCallback:()->(), resumedCallback:()->()) {
+        _changedCallback = changedCallback
+        _pausedCallback = pausedCallback
+        _resumedCallback = resumedCallback
+    }
+    
+    private func startTimer() {
+        let timer = NSTimer(timeInterval: 0.5, target: self, selector: "timerTick", userInfo: nil, repeats: true)
+        timer.tolerance = 0.5
+        NSRunLoop.currentRunLoop().addTimer(timer, forMode: NSDefaultRunLoopMode)
+        
+        if let oldTimer = _timer {
+            oldTimer.invalidate()
+        }
+        _timer = timer
+    }
+    
+    @objc func timerTick() {
+        _changedCallback()
+    }
+    
+    private func stopTimer() {
+        if let timer = _timer {
+            timer.invalidate()
+        }
+    }
+    
+    var mode:TimelineMode {
+        get {
+            return _timerStartedAtDate == nil ? .Paused : .Running
+        }
+    }
+    
+    func reset() {
+        pause()
+        _baseline = NSTimeInterval(0)
+    }
+    
+    func pause() {
+        _baseline = current
+        _timerStartedAtDate = nil
+        stopTimer()
+        _pausedCallback()
+    }
+    
+    func resume() {
+        _timerStartedAtDate = NSDate()
+        startTimer()
+        _resumedCallback()
+    }
+    
+    func adjustByInterval(interval:NSTimeInterval) {
+        _baseline += interval
+        _changedCallback()
+    }
+    
+    var current:NSTimeInterval {
+        get {
+            if let timerStartedAt = _timerStartedAtDate { // timer is running
+                return NSDate().timeIntervalSinceDate(timerStartedAt) + _baseline
+            }
+            return _baseline
+        }
+    }
 }
 
 class ViewController: UIViewController, UITableViewDelegate, UITableViewDataSource {
@@ -24,9 +103,18 @@ class ViewController: UIViewController, UITableViewDelegate, UITableViewDataSour
     
     private var _presentationSections:[PresentationSection] = []
     
-    private var _startTime:NSDate?
-    private var _pauseTime:NSDate?
-    private var _timer:NSTimer?
+    private lazy var _timeline:Timeline = self.createTimeline()
+        
+    private func createTimeline() -> Timeline {
+        return Timeline(
+            changedCallback: {
+                self.timelineChanged()
+            }, pausedCallback: {
+                self.timelinePaused()
+            }, resumedCallback: {
+                self.timelineResumed()
+            })
+    }
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -50,15 +138,12 @@ class ViewController: UIViewController, UITableViewDelegate, UITableViewDataSour
     }
     
     func tableView(tableView: UITableView, cellForRowAtIndexPath indexPath: NSIndexPath) -> UITableViewCell {
-        guard let cell = tableView.dequeueReusableCellWithIdentifier("timingCell") else {
+        guard let cell = tableView.dequeueReusableCellWithIdentifier("timingCell") as? TimingCell else {
             fatalError("bad cell reuse identifier")
         }
+        let section = _presentationSections[indexPath.row]
+        cell.setSectionName(section.name, startAtInterval: section.startAtInterval)
         return cell
-    }
-    
-    func tableView(tableView: UITableView, moveRowAtIndexPath sourceIndexPath: NSIndexPath, toIndexPath destinationIndexPath: NSIndexPath) {
-        let moved = _presentationSections.removeAtIndex(sourceIndexPath.row)
-        _presentationSections.insert(moved, atIndex: destinationIndexPath.row)
     }
     
     func tableView(tableView: UITableView, commitEditingStyle editingStyle: UITableViewCellEditingStyle, forRowAtIndexPath indexPath: NSIndexPath) {
@@ -72,7 +157,7 @@ class ViewController: UIViewController, UITableViewDelegate, UITableViewDataSour
     @IBAction func addRowButtonWasClicked(sender: ButtonWithBorder) {
         let newIndex = _presentationSections.count
         
-        _presentationSections.append(PresentationSection(name: "Topic \(newIndex+1)", duration: 5 * 60))
+        _presentationSections.append(PresentationSection(name: "Topic \(newIndex+1)", startAtInterval: _timeline.current))
         sectionsTableView.insertRowsAtIndexPaths([NSIndexPath(forRow: newIndex, inSection: 0)], withRowAnimation: .Automatic)
         
         try! savePresentationSections(_presentationSections)
@@ -80,30 +165,29 @@ class ViewController: UIViewController, UITableViewDelegate, UITableViewDataSour
     
     @IBAction func startButtonWasClicked(sender: ButtonWithBorder) {
         if sectionsTableView.editing {
-            startTimer()
+            _timeline.resume()
         } else {
-            pauseTimer()
+            _timeline.pause()
         }
     }
     
-    func startTimer() {
-        startButton.setTitle("Stop", forState: .Normal)
-        
-        if _timer == nil {
-            _startTime = NSDate()
-            _pauseTime = nil
-            
-            let timer = NSTimer(timeInterval: 0.5, target: self, selector: "updateTimer", userInfo: nil, repeats: true)
-            timer.tolerance = 0.5
-            NSRunLoop.currentRunLoop().addTimer(timer, forMode: NSDefaultRunLoopMode)
-            _timer = timer
-            
-        } else if let startTime = _startTime, let pauseTime = _pauseTime {
-            // else it's paused, resume it
-            let pauseDuration = NSDate().timeIntervalSinceDate(pauseTime)
-            _startTime = startTime.dateByAddingTimeInterval(pauseDuration)
-            _pauseTime = nil
+    @IBAction func timeLabelPanned(sender: UIPanGestureRecognizer) {
+        if _timeline.mode == .Running {
+            return
         }
+        
+        let translation = sender.translationInView(view)
+        
+        let horizontalPanDivisor:CGFloat = 1.0
+        if translation.x < -horizontalPanDivisor || translation.x > horizontalPanDivisor { // horz pan greater than threshold
+            _timeline.adjustByInterval(NSTimeInterval(translation.x / horizontalPanDivisor))
+            
+            sender.setTranslation(CGPointMake(0,0), inView: view) // reset the recognizer
+        }
+    }
+    
+    func timelineResumed() {
+        startButton.setTitle("Stop", forState: .Normal)
         
         self.resetButton.alpha = 0
         self.addRowButton.alpha = 0
@@ -120,11 +204,9 @@ class ViewController: UIViewController, UITableViewDelegate, UITableViewDataSour
         })
     }
     
-    func pauseTimer() {
+    func timelinePaused() {
         sectionsTableView.editing = true
         startButton.setTitle("Start", forState: .Normal)
-        
-        _pauseTime = NSDate()
         
         UIView.animateWithDuration(0.25, animations: {
             self.sectionsTableView.hidden = false
@@ -139,29 +221,17 @@ class ViewController: UIViewController, UITableViewDelegate, UITableViewDataSour
         })
     }
     
-    func updateTimer() {
-        if _pauseTime != nil {
-            return // simply don't redraw, the timer carries on
-        }
-        if let start = _startTime {
-            drawTime(NSDate(), since:start)
-        }
+    func timelineChanged() {
+        drawTime(_timeline.current)
     }
     
-    func drawTime(time:NSDate, since:NSDate) {
-        let components = NSCalendar.currentCalendar().components([NSCalendarUnit.Minute, NSCalendarUnit.Second],
-            fromDate: since, toDate: time, options: NSCalendarOptions())
-        
-        timeLabel.text = String(format: "%02d:%02d", components.minute, components.second)
+    func drawTime(interval:NSTimeInterval) {
+        timeLabel.text = String(format: "%02d:%02d", Int(interval / 60), Int(interval % 60))
     }
     
     @IBAction func resetButtonWasClicked(sender: ButtonWithBorder) {
-        _timer?.invalidate()
-        
-        _timer = nil
-        _startTime = nil
-        
-        drawTime(NSDate(), since: NSDate())
+        _timeline.reset()
+        drawTime(_timeline.current)
     }
     
     func loadPresentationSections() -> [PresentationSection] {
@@ -196,8 +266,8 @@ class ViewController: UIViewController, UITableViewDelegate, UITableViewDataSour
         
         var sections = [PresentationSection]()
         for dict in result {
-            if let name = dict["name"] as? String, duration = dict["duration"] as? NSNumber {
-                sections.append(PresentationSection(name: name , duration: NSTimeInterval(duration.doubleValue)))
+            if let name = dict["name"] as? String, duration = dict["startAtInterval"] as? NSNumber {
+                sections.append(PresentationSection(name: name , startAtInterval: NSTimeInterval(duration.doubleValue)))
             }
         }
         return sections
@@ -212,11 +282,22 @@ class ViewController: UIViewController, UITableViewDelegate, UITableViewDataSour
         
         var plist = [NSDictionary]()
         for section in _presentationSections {
-            plist.append(["name":section.name, "duration":NSNumber(double:section.duration)])
+            plist.append(["name":section.name, "startAtInterval":NSNumber(double:section.startAtInterval)])
         }
         
         let data = try NSPropertyListSerialization.dataWithPropertyList(plist, format: .XMLFormat_v1_0, options: 0)
         try data.writeToFile(plistPath, options:NSDataWritingOptions())
     }
+}
+
+class TimingCell : UITableViewCell {
+    @IBOutlet private weak var startAtIntervalLabel: UILabel!
+    @IBOutlet private weak var sectionNameLabel: UILabel!
+    
+    func setSectionName(name:String, startAtInterval:NSTimeInterval) {
+        sectionNameLabel.text = name
+        startAtIntervalLabel.text = String(format: "%02d:%02d", Int(startAtInterval / 60), Int(startAtInterval % 60))
+    }
+    
 }
 
